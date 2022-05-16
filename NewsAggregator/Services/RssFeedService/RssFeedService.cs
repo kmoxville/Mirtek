@@ -46,6 +46,13 @@ namespace RssFeedAggregator.Services.RssFeedService
 
             var query = _unitOfWork.Posts.GetAll();
 
+            if (!string.IsNullOrEmpty(request.Filter))
+                query = query.Where(item => EF.Functions.Like(item.Description, $"%{request.Filter}%"));
+
+            int count = query.Count();
+
+            query = query.OrderBy(x => x.Id);
+
             if (request.Skip.HasValue)
                 query = query.Skip(request.Skip.Value);
 
@@ -54,13 +61,10 @@ namespace RssFeedAggregator.Services.RssFeedService
             else
                 query = query.Take(_generalOptions.DefaultNumItemsInGetPostsQuery);
 
-            if (!string.IsNullOrEmpty(request.Filter))
-                query = query.Where(item => EF.Functions.Like(item.Description, $"%{request.Filter}%"));
-
             return new GetFeedsResponse()
             {
                 Posts = query.Select(x => _mapper.Map<Post>(x)).ToList(),
-                Total = query.Count()
+                Total = count
             };
         }
 

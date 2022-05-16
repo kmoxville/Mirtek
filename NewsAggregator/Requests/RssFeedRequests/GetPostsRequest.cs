@@ -1,5 +1,8 @@
 ﻿namespace RssFeedAggregator.Requests.RssFeedRequests
 {
+    /// <summary>
+    /// Request with pagination
+    /// </summary>
     public sealed class GetPostsRequest
     {
         public int? Skip { get; set; }
