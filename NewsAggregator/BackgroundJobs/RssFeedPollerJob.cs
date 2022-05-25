@@ -5,57 +5,54 @@ using RssFeedAggregator.DAL.UnitOfWork;
 using System.ServiceModel.Syndication;
 using RssFeedAggregator.DAL;
 using Microsoft.EntityFrameworkCore;
+using RssFeedAggregator.Services.RssFeedDownloader;
 
 namespace RssFeedAggregator.BackgroundJobs
 {
     [DisallowConcurrentExecution()]
     public class RssFeedPollerJob : IJob
     {
-        private readonly IHttpClientFactory _clientFactory;
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<RssFeedPollerJob> _logger;
+        private readonly IRssFeedDownloaderService _rssFeedDownloader;
 
-        public RssFeedPollerJob(IHttpClientFactory clientFactory, 
+        public RssFeedPollerJob(IRssFeedDownloaderService rssFeedDownloader, 
             IMapper mapper,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ILogger<RssFeedPollerJob> logger)
         {
-            _clientFactory = clientFactory;
+            _rssFeedDownloader = rssFeedDownloader;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         public async Task Execute(IJobExecutionContext context)
         {
-            foreach (var source in _unitOfWork.FeedSources.GetAll().ToList())
+            foreach (var source in _unitOfWork.FeedSources.GetAll().AsNoTracking().ToList())
             {
-                using var httpClient = _clientFactory.CreateClient("ResilientClient");
-                using var result = await httpClient.GetStreamAsync(source.Url);
-                SyndicationFeed feed = SyndicationFeed.Load(System.Xml.XmlReader.Create(result));
+                SyndicationFeed feed;
 
-                var itemsMap = feed.Items.ToDictionary(item => PostEntity.GetGuidMD5(item.Summary.Text), item => item);
-
-                // filter items that already stored in db
-                var keys = itemsMap.Keys.ToArray();
-                _unitOfWork.Posts.GetAll()
-                    .Where(x => x.FeedSourceEntityId == source.Id && keys.Contains(x.Guid))
-                    .Select(x => x.Guid)
-                    .ToList()
-                    .ForEach(key => itemsMap.Remove(key));
-
-                // add new items
-                var newEntities = itemsMap.Select(item =>
+                try
                 {
-                    var newEntity = _mapper.Map<PostEntity>(item.Value);
-                    newEntity.FeedSource = source;
+                    feed = await _rssFeedDownloader.GetSyndicationFeed(source.Url);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex.Message);
+                    return;
+                }
 
-                    return newEntity;
-                }).ToArray();
+                var feedEntry = await _unitOfWork.FeedSources.GetAll()
+                    .Where(x => x.Id == source.Id)
+                    .Include(x => x.Posts)
+                    .FirstOrDefaultAsync();
 
-                if (!newEntities.Any())
+                if (feedEntry == null)
                     return;
 
-                _unitOfWork.Context.Entry(source).State = EntityState.Unchanged;
-                await _unitOfWork.Posts.InsertAsync(newEntities);
+                feedEntry.AddPosts(feed.Items.Select(item => _mapper.Map<PostEntity>(item)));
                 
                 await _unitOfWork.Save();
             }

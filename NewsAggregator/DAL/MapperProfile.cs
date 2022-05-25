@@ -17,7 +17,6 @@ namespace RssFeedAggregator.DAL
                 .ForMember(x => x.Description, x => x.MapFrom(src => src.Summary.Text))
                 .ForMember(x => x.Title, x => x.MapFrom(src => src.Title.Text))
                 .ForMember(x => x.PublishedAt, x => x.MapFrom(src => src.PublishDate.DateTime))
-                .ForMember(x => x.Guid, x => x.MapFrom(src => PostEntity.GetGuidMD5(src.Summary.Text)))
                 .ForMember(x => x.Id, opt => opt.Ignore());
 
             CreateMap<PostEntity, Post>();

@@ -15,7 +15,7 @@ namespace RssFeedAggregator.DAL.Repository
             _dbSet = context.Set<TEntity>();
         }
 
-        public IQueryable<TEntity> GetAll() => _dbSet.AsNoTracking().Where(e => !e.IsDeleted);
+        public IQueryable<TEntity> GetAll() => _dbSet.Where(e => !e.IsDeleted);
 
         public Task<TEntity?> GetByIdAsync(int id)
         {

@@ -5,6 +5,7 @@ using RssFeedAggregator.DAL.Entities;
 using RssFeedAggregator.DAL.UnitOfWork;
 using RssFeedAggregator.Requests.RssFeedRequests;
 using RssFeedAggregator.Responses.RssFeedRequests;
+using RssFeedAggregator.Services.RssFeedDownloader;
 using RssFeedAggregator.Utils.Options;
 using RssFeedAggregator.Validation;
 using RssFeedAggregator.Validation.Requests.RssFeedRequests;
@@ -18,12 +19,14 @@ namespace RssFeedAggregator.Services.RssFeedService
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRegisterRequestValidator _registerRequestValidator;
         private readonly IGetPostsRequestValidator _getPostsRequestValidator;
-        private readonly IHttpClientFactory _clientFactory;
+        private readonly IRssFeedDownloaderService _rssFeedDownloader;
         private readonly IMapper _mapper;
         private readonly GeneralOptions _generalOptions;
+        private readonly ILogger<RssFeedService> _logger;
 
-        public RssFeedService(IHttpClientFactory clientFactory,
+        public RssFeedService(IRssFeedDownloaderService rssFeedDownloader,
             IUnitOfWork unitOfWork,
+            ILogger<RssFeedService> logger,
             IMapper mapper,
             IRegisterRequestValidator registerRequestValidator,
             IGetPostsRequestValidator getPostsRequestValidator,
@@ -31,10 +34,11 @@ namespace RssFeedAggregator.Services.RssFeedService
         {
             _unitOfWork = unitOfWork;
             _registerRequestValidator = registerRequestValidator;
-            _clientFactory = clientFactory;
+            _rssFeedDownloader = rssFeedDownloader;
             _mapper = mapper;
             _getPostsRequestValidator = getPostsRequestValidator;
             _generalOptions = generalOptions.Value;
+            _logger = logger;
         }
 
         public async Task<GetFeedsResponse> GetPostsAsync(GetPostsRequest request)
@@ -44,7 +48,7 @@ namespace RssFeedAggregator.Services.RssFeedService
             if (!operationResult.Succeed)
                 throw new OperationException(operationResult);
 
-            var query = _unitOfWork.Posts.GetAll();
+            var query = _unitOfWork.Posts.GetAll().AsNoTracking();
 
             if (!string.IsNullOrEmpty(request.Filter))
                 query = query.Where(item => EF.Functions.Like(item.Description, $"%{request.Filter}%"));
@@ -70,7 +74,8 @@ namespace RssFeedAggregator.Services.RssFeedService
 
         public async Task RegisterAsync(RegisterRequest request)
         {
-            var foundEntity = _unitOfWork.FeedSources.GetAll().FirstOrDefault(x => x.Url == request.Url);
+            FeedSourceEntity? foundEntity = _unitOfWork.FeedSources.GetAll().FirstOrDefault(x => x.Url == request.Url);
+            SyndicationFeed feed;
 
             if (foundEntity != null)
                 return;
@@ -80,10 +85,15 @@ namespace RssFeedAggregator.Services.RssFeedService
             if (!operationResult.Succeed)
                 throw new OperationException(operationResult);
 
-            //ToDo handle errors
-            using var httpClient = _clientFactory.CreateClient("ResilientClient");
-            using var result = await httpClient.GetStreamAsync(request.Url);
-            SyndicationFeed feed = SyndicationFeed.Load(System.Xml.XmlReader.Create(result));
+            try
+            {
+                feed = await _rssFeedDownloader.GetSyndicationFeed(request.Url);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex.Message);
+                return;
+            }
 
             var newFeedEntity = _mapper.Map<FeedSourceEntity>(feed);
             newFeedEntity.Url = request.Url;

@@ -1,10 +1,16 @@
-﻿namespace RssFeedAggregator.DAL.Entities
+﻿using Microsoft.EntityFrameworkCore;
+
+namespace RssFeedAggregator.DAL.Entities
 {
     /// <summary>
     /// Source of news - url feed
+    /// Rich model - it checks post duplicates when new one added
     /// </summary>
+    [Index(nameof(Url))]
     public sealed class FeedSourceEntity : BaseEntity
     {
+        private ICollection<PostEntity> _posts = new List<PostEntity>();
+
         /// <summary>
         /// Feed title
         /// </summary>
@@ -28,6 +34,21 @@
         /// <summary>
         /// Related news
         /// </summary>
-        public ICollection<PostEntity> Posts { get; set; } = new List<PostEntity>();
+        [BackingField(nameof(_posts))]
+        public IEnumerable<PostEntity> Posts => _posts;
+
+        public void AddPosts(IEnumerable<PostEntity> newPosts)
+        {
+            foreach (var post in newPosts)
+            {
+                if (!AlreadyExists(post))
+                {
+                    post.FeedSource = this;
+                    _posts.Add(post);
+                }
+            }
+        }
+
+        private bool AlreadyExists(PostEntity newPost) => Posts.Any(post => post == newPost);
     }
 }

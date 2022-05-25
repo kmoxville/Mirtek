@@ -5,6 +5,7 @@ using Quartz;
 using RssFeedAggregator.BackgroundJobs;
 using RssFeedAggregator.DAL;
 using RssFeedAggregator.DAL.UnitOfWork;
+using RssFeedAggregator.Services.RssFeedDownloader;
 using RssFeedAggregator.Services.RssFeedService;
 using RssFeedAggregator.Utils.Options;
 using RssFeedAggregator.Validation.Requests.RssFeedRequests;
@@ -74,6 +75,7 @@ namespace RssFeedAggregator.Utils
         public static IServiceCollection AddBllServices(this IServiceCollection services)
         {
             services.AddScoped<IRssFeedService, RssFeedService>();
+            services.AddScoped<IRssFeedDownloaderService, RssFeedDownloaderService>();
 
             return services;
         }
@@ -82,7 +84,7 @@ namespace RssFeedAggregator.Utils
         {
             var options = config.GetSection(HttpClientOptions.Position).Get<HttpClientOptions>();
 
-            services.AddHttpClient("ResilientClient")
+            services.AddHttpClient(Settings.RESILIENT_CLIENT)
                 .AddPolicyHandler(HttpPolicyExtensions
                     .HandleTransientHttpError()
                     .WaitAndRetryAsync(options.RetryCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)))); 

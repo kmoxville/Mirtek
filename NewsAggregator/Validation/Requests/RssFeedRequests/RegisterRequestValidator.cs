@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.Extensions.Options;
 using RssFeedAggregator.Utils.Options;
 using System.ServiceModel.Syndication;
+using RssFeedAggregator.Services.RssFeedDownloader;
 
 namespace RssFeedAggregator.Validation.Requests.RssFeedRequests
 {
@@ -13,11 +14,11 @@ namespace RssFeedAggregator.Validation.Requests.RssFeedRequests
 
     public sealed class RegisterRequestValidator : ValidationService<RegisterRequest>, IRegisterRequestValidator
     {
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IRssFeedDownloaderService _rssFeedDownloaderService;
 
-        public RegisterRequestValidator(IHttpClientFactory clientFactory, IOptions<GeneralOptions> options)
+        public RegisterRequestValidator(IRssFeedDownloaderService rssFeedDownloaderService, IOptions<GeneralOptions> options)
         {
-            _httpClientFactory = clientFactory;
+            _rssFeedDownloaderService = rssFeedDownloaderService;
 
             RuleFor(x => x.Url)
                 .MaximumLength(options.Value.MaxUrlLength)
@@ -28,9 +29,7 @@ namespace RssFeedAggregator.Validation.Requests.RssFeedRequests
                 {
                     try
                     {
-                        using var httpClient = _httpClientFactory.CreateClient("ResilientClient");
-                        var result = await httpClient.GetStreamAsync(url);
-                        SyndicationFeed feed = SyndicationFeed.Load(System.Xml.XmlReader.Create(result));
+                        await _rssFeedDownloaderService.GetSyndicationFeed(url);
                     }
                     catch (Exception)
                     {

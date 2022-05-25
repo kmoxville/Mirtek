@@ -3,6 +3,9 @@ using RssFeedAggregator.Utils;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
 builder.Services.AddConfig(builder.Configuration);
 builder.Services.AddDatabaseContext(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Services.AddUnitOfWork();
